@@ -935,6 +935,9 @@ main() {
         "installer")
             exec "$SCRIPT_DIR/bin/installer.sh" "${args[@]:1}"
             ;;
+        "list")
+            exec "$SCRIPT_DIR/bin/list.sh" "${args[@]:1}"
+            ;;
         "touchid")
             exec "$SCRIPT_DIR/bin/touchid.sh" "${args[@]:1}"
             ;;

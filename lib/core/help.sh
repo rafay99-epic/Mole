@@ -53,6 +53,33 @@ show_touchid_help() {
     echo "If no command is provided, an interactive menu is shown."
 }
 
+show_list_help() {
+    echo "Usage: mo list [OPTIONS]"
+    echo ""
+    echo "List installed applications and the exact name to pass to 'mo uninstall'."
+    echo "Read-only: no files are modified."
+    echo ""
+    echo "Examples:"
+    echo "  mo list                        Pretty table of all apps"
+    echo "  mo list --brew-only            Only Homebrew-managed apps"
+    echo "  mo list --source user          Only apps in /Applications and ~/Applications"
+    echo "  mo list --sort size            Largest apps first"
+    echo "  mo list --json                 Machine-readable output"
+    echo "  mo list | grep -i slack        Find an app's UNINSTALL NAME"
+    echo ""
+    echo "Options:"
+    echo "  --json                  Emit JSON (auto-enabled when stdout is piped)"
+    echo "  --sort name|size        Sort key (default: name)"
+    echo "  --source <kind>         Filter by source: all|user|system|homebrew|setapp"
+    echo "  --brew-only             Shortcut for --source homebrew"
+    echo "  --debug                 Show detailed operation logs"
+    echo "  -h, --help              Show this help message"
+    echo ""
+    echo "The UNINSTALL NAME column is what 'mo uninstall' accepts:"
+    echo "  - Homebrew apps: the cask token (e.g. 'visual-studio-code')"
+    echo "  - Other apps: the app's display name (e.g. 'Slack')"
+}
+
 show_uninstall_help() {
     echo "Usage: mo uninstall [OPTIONS] [APP_NAME ...]"
     echo ""
