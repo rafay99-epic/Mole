@@ -47,7 +47,6 @@ curl -fsSL https://raw.githubusercontent.com/tw93/mole/main/install.sh | bash
 mo                           # Interactive menu
 mo clean                     # Deep cleanup + already-uninstalled app leftovers
 mo uninstall                 # Remove installed apps + their leftovers
-mo list                      # List installed apps with their uninstall names
 mo optimize                  # Refresh caches & services
 mo analyze                   # Visual disk explorer (or 'mo analyse')
 mo status                    # Live system health dashboard

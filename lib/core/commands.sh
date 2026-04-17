@@ -4,7 +4,6 @@
 MOLE_COMMANDS=(
     "clean:Free up disk space"
     "uninstall:Remove apps completely"
-    "list:List installed apps with their uninstall names"
     "optimize:Check and maintain system"
     "analyze:Explore disk usage"
     "status:Monitor system health"

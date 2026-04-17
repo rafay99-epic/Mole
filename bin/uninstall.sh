@@ -929,6 +929,112 @@ match_apps_by_name() {
     done
 }
 
+# Escape a value for embedding in a single-line JSON string. Only handles
+# the chars that would break a one-line value: backslash, quote, and C0
+# whitespace. Bundle IDs / display names never contain control bytes worth
+# preserving in this output.
+uninstall_list_json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\t'/ }"
+    s="${s//$'\r'/ }"
+    s="${s//$'\n'/ }"
+    printf '%s' "$s"
+}
+
+# Read-only listing: surface each installed app's display name, bundle id,
+# the exact name `mo uninstall` accepts, and human-readable size. Reuses the
+# existing scanner so the output stays in lockstep with what the destructive
+# path sees.
+uninstall_list_apps() {
+    local apps_file=""
+    if ! apps_file=$(scan_applications); then
+        return 1
+    fi
+    if [[ ! -f "$apps_file" ]]; then
+        return 1
+    fi
+    if ! load_applications "$apps_file"; then
+        rm -f "$apps_file"
+        return 1
+    fi
+    rm -f "$apps_file"
+
+    # Auto-switch to JSON when stdout is piped, matching `mo status`.
+    local format="text"
+    if [[ ! -t 1 ]]; then
+        format="json"
+    fi
+
+    if [[ "$format" == "json" ]]; then
+        printf '['
+        local first=1
+        local app_data
+        for app_data in "${apps_data[@]+"${apps_data[@]}"}"; do
+            IFS='|' read -r _ app_path app_name bundle_id size _ _ <<< "$app_data"
+            local cask=""
+            if is_homebrew_available; then
+                cask=$(get_brew_cask_name "$app_path" 2> /dev/null || true)
+            fi
+            local uninstall_name="${cask:-$app_name}"
+            local source_label="App"
+            [[ -n "$cask" ]] && source_label="Homebrew"
+            local size_display
+            size_display=$(uninstall_normalize_size_display "$size")
+            if [[ $first -eq 1 ]]; then
+                first=0
+                printf '\n'
+            else
+                printf ',\n'
+            fi
+            printf '  {"name": "%s", "bundle_id": "%s", "source": "%s", "uninstall_name": "%s", "path": "%s", "size": "%s"}' \
+                "$(uninstall_list_json_escape "$app_name")" \
+                "$(uninstall_list_json_escape "$bundle_id")" \
+                "$source_label" \
+                "$(uninstall_list_json_escape "$uninstall_name")" \
+                "$(uninstall_list_json_escape "$app_path")" \
+                "$(uninstall_list_json_escape "$size_display")"
+        done
+        if [[ $first -eq 0 ]]; then
+            printf '\n'
+        fi
+        printf ']\n'
+        return 0
+    fi
+
+    local total=${#apps_data[@]}
+    if [[ $total -eq 0 ]]; then
+        echo "No applications found."
+        return 0
+    fi
+
+    printf '\n'
+    printf '%-36s %-30s %-30s %8s\n' 'NAME' 'BUNDLE ID' 'UNINSTALL NAME' 'SIZE'
+    printf -- '-%.0s' $(seq 1 108)
+    printf '\n'
+
+    local app_data
+    for app_data in "${apps_data[@]+"${apps_data[@]}"}"; do
+        IFS='|' read -r _ app_path app_name bundle_id size _ _ <<< "$app_data"
+        local cask=""
+        if is_homebrew_available; then
+            cask=$(get_brew_cask_name "$app_path" 2> /dev/null || true)
+        fi
+        local uninstall_name="${cask:-$app_name}"
+        local size_display
+        size_display=$(uninstall_normalize_size_display "$size")
+        printf '%-36s %-30s %-30s %8s\n' \
+            "${app_name:0:34}" \
+            "${bundle_id:0:28}" \
+            "${uninstall_name:0:28}" \
+            "$size_display"
+    done
+
+    printf '\n%d application(s)  |  Remove with: mo uninstall <UNINSTALL NAME>\n\n' "$total"
+    return 0
+}
+
 main() {
     # Set current command for operation logging
     export MOLE_CURRENT_COMMAND="uninstall"
@@ -940,6 +1046,7 @@ main() {
 
     # Parse flags and collect app name arguments
     local -a app_name_args=()
+    local list_mode=0
     for arg in "$@"; do
         case "$arg" in
             "--help" | "-h")
@@ -954,6 +1061,9 @@ main() {
                 ;;
             "--permanent")
                 export MOLE_DELETE_MODE="permanent"
+                ;;
+            "--list")
+                list_mode=1
                 ;;
             "--whitelist")
                 echo "Unknown uninstall option: $arg"
@@ -971,6 +1081,13 @@ main() {
                 ;;
         esac
     done
+
+    # --list short-circuits before any destructive code. Read-only path:
+    # scan, resolve uninstall names, print table or JSON, exit 0.
+    if [[ $list_mode -eq 1 ]]; then
+        uninstall_list_apps
+        return $?
+    fi
 
     hide_cursor
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then

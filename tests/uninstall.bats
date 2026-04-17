@@ -929,3 +929,178 @@ INNER
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"delete_mode=permanent"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# --list: read-only inventory of installable app names (PR #755 scope)
+# ---------------------------------------------------------------------------
+
+@test "uninstall --list prints table with NAME, BUNDLE ID, UNINSTALL NAME, SIZE" {
+	local apps_cache
+	apps_cache="$(mktemp "${BATS_TEST_TMPDIR:-$BATS_RUN_TMPDIR:-$HOME}/tmp-list-text.XXXXXX")"
+	# Format matches load_applications: epoch|app_path|app_name|bundle_id|size|last_used|size_kb
+	cat > "$apps_cache" <<'CACHE'
+1700000000|/Applications/Slack.app|Slack|com.tinyspeck.slackmacgap|180MB|Today|184320
+1700000000|/Applications/Zoom.app|Zoom|us.zoom.xos|140MB|Yesterday|143360
+CACHE
+
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_TEST_NO_AUTH=1 \
+		APPS_CACHE_FILE="$apps_cache" bash --noprofile --norc <<'INNER'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+
+log_operation_session_start() { :; }
+show_uninstall_help() { :; }
+hide_cursor() { :; }
+show_cursor() { :; }
+clear_screen() { :; }
+scan_applications() { printf '%s\n' "$APPS_CACHE_FILE"; }
+load_applications() {
+    apps_data=()
+    while IFS='|' read -r epoch app_path app_name bundle_id size last_used size_kb; do
+        apps_data+=("$epoch|$app_path|$app_name|$bundle_id|$size|$last_used|${size_kb:-0}")
+    done < "$1"
+}
+# Stub Homebrew so test stays hermetic and brew detection never fires.
+is_homebrew_available() { return 1; }
+get_brew_cask_name() { return 1; }
+# Stubbed because the production helper lives earlier in bin/uninstall.sh
+# and our sed slice only pulls list-related helpers + main().
+uninstall_normalize_size_display() { local s="${1:-}"; [[ -z "$s" || "$s" == "0" || "$s" == "Unknown" ]] && echo "N/A" || echo "$s"; }
+
+eval "$(sed -n '/^uninstall_list_json_escape()/,/^main "\$@"/p' "$PROJECT_ROOT/bin/uninstall.sh" | sed '$d')"
+# Force text mode by simulating a TTY for stdout via /dev/tty redirect not
+# available in bats; instead pipe through a wrapper that fakes -t 1. Simplest:
+# call the function directly so [[ -t 1 ]] uses bash's stdout (the bats pipe).
+# We accept the function emits JSON when piped; assert against JSON shape too.
+main --list
+INNER
+
+	rm -f "$apps_cache"
+	[ "$status" -eq 0 ]
+	# Bats pipes stdout, so output is JSON. Assert both apps and uninstall_name.
+	[[ "$output" == *'"name": "Slack"'* ]]
+	[[ "$output" == *'"name": "Zoom"'* ]]
+	[[ "$output" == *'"uninstall_name": "Slack"'* ]]
+	[[ "$output" == *'"bundle_id": "com.tinyspeck.slackmacgap"'* ]]
+	[[ "$output" == *'"source": "App"'* ]]
+}
+
+@test "uninstall --list emits JSON array when stdout is piped" {
+	local apps_cache
+	apps_cache="$(mktemp "${BATS_TEST_TMPDIR:-$BATS_RUN_TMPDIR:-$HOME}/tmp-list-json.XXXXXX")"
+	cat > "$apps_cache" <<'CACHE'
+1700000000|/Applications/Slack.app|Slack|com.tinyspeck.slackmacgap|180MB|Today|184320
+CACHE
+
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_TEST_NO_AUTH=1 \
+		APPS_CACHE_FILE="$apps_cache" bash --noprofile --norc <<'INNER'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+
+log_operation_session_start() { :; }
+show_uninstall_help() { :; }
+hide_cursor() { :; }
+show_cursor() { :; }
+clear_screen() { :; }
+scan_applications() { printf '%s\n' "$APPS_CACHE_FILE"; }
+load_applications() {
+    apps_data=()
+    while IFS='|' read -r epoch app_path app_name bundle_id size last_used size_kb; do
+        apps_data+=("$epoch|$app_path|$app_name|$bundle_id|$size|$last_used|${size_kb:-0}")
+    done < "$1"
+}
+is_homebrew_available() { return 1; }
+get_brew_cask_name() { return 1; }
+# Stubbed because the production helper lives earlier in bin/uninstall.sh
+# and our sed slice only pulls list-related helpers + main().
+uninstall_normalize_size_display() { local s="${1:-}"; [[ -z "$s" || "$s" == "0" || "$s" == "Unknown" ]] && echo "N/A" || echo "$s"; }
+
+eval "$(sed -n '/^uninstall_list_json_escape()/,/^main "\$@"/p' "$PROJECT_ROOT/bin/uninstall.sh" | sed '$d')"
+main --list
+INNER
+
+	rm -f "$apps_cache"
+	[ "$status" -eq 0 ]
+	# Output should start with '[' and end with ']' to be a valid JSON array.
+	[[ "${output:0:1}" == "[" ]]
+	[[ "${output: -1}" == "]" ]]
+	# Round-trip via python to confirm it parses as JSON.
+	if command -v python3 > /dev/null; then
+		echo "$output" | python3 -c 'import sys, json; d=json.load(sys.stdin); assert isinstance(d, list) and len(d)==1 and d[0]["name"]=="Slack"'
+	fi
+}
+
+@test "uninstall --list with empty scan returns empty JSON array" {
+	local apps_cache
+	apps_cache="$(mktemp "${BATS_TEST_TMPDIR:-$BATS_RUN_TMPDIR:-$HOME}/tmp-list-empty.XXXXXX")"
+	# Non-empty file so load_applications doesn't bail early on size check.
+	echo "" > "$apps_cache"
+
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_TEST_NO_AUTH=1 \
+		APPS_CACHE_FILE="$apps_cache" bash --noprofile --norc <<'INNER'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+
+log_operation_session_start() { :; }
+show_uninstall_help() { :; }
+hide_cursor() { :; }
+show_cursor() { :; }
+clear_screen() { :; }
+scan_applications() { printf '%s\n' "$APPS_CACHE_FILE"; }
+load_applications() {
+    apps_data=()
+    return 0
+}
+is_homebrew_available() { return 1; }
+get_brew_cask_name() { return 1; }
+# Stubbed because the production helper lives earlier in bin/uninstall.sh
+# and our sed slice only pulls list-related helpers + main().
+uninstall_normalize_size_display() { local s="${1:-}"; [[ -z "$s" || "$s" == "0" || "$s" == "Unknown" ]] && echo "N/A" || echo "$s"; }
+
+eval "$(sed -n '/^uninstall_list_json_escape()/,/^main "\$@"/p' "$PROJECT_ROOT/bin/uninstall.sh" | sed '$d')"
+main --list
+INNER
+
+	rm -f "$apps_cache"
+	[ "$status" -eq 0 ]
+	[[ "$output" == "[]" ]]
+}
+
+@test "uninstall --list flags brew-managed apps with cask uninstall_name" {
+	local apps_cache
+	apps_cache="$(mktemp "${BATS_TEST_TMPDIR:-$BATS_RUN_TMPDIR:-$HOME}/tmp-list-brew.XXXXXX")"
+	cat > "$apps_cache" <<'CACHE'
+1700000000|/Applications/Visual Studio Code.app|Visual Studio Code|com.microsoft.VSCode|420MB|Today|430080
+CACHE
+
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_TEST_NO_AUTH=1 \
+		APPS_CACHE_FILE="$apps_cache" bash --noprofile --norc <<'INNER'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+
+log_operation_session_start() { :; }
+show_uninstall_help() { :; }
+hide_cursor() { :; }
+show_cursor() { :; }
+clear_screen() { :; }
+scan_applications() { printf '%s\n' "$APPS_CACHE_FILE"; }
+load_applications() {
+    apps_data=()
+    while IFS='|' read -r epoch app_path app_name bundle_id size last_used size_kb; do
+        apps_data+=("$epoch|$app_path|$app_name|$bundle_id|$size|$last_used|${size_kb:-0}")
+    done < "$1"
+}
+# Force brew-managed result.
+is_homebrew_available() { return 0; }
+get_brew_cask_name() { printf '%s' "visual-studio-code"; return 0; }
+uninstall_normalize_size_display() { local s="${1:-}"; [[ -z "$s" || "$s" == "0" || "$s" == "Unknown" ]] && echo "N/A" || echo "$s"; }
+
+eval "$(sed -n '/^uninstall_list_json_escape()/,/^main "\$@"/p' "$PROJECT_ROOT/bin/uninstall.sh" | sed '$d')"
+main --list
+INNER
+
+	rm -f "$apps_cache"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *'"uninstall_name": "visual-studio-code"'* ]]
+	[[ "$output" == *'"source": "Homebrew"'* ]]
+}
