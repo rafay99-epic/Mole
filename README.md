@@ -163,7 +163,7 @@ System: 5/32 GB RAM | 333/460 GB Disk (72%) | Uptime 6d
 System optimization completed
 ====================================================================
 
-Use `mo optimize --whitelist` to exclude specific optimizations.
+Use `mo optimize --whitelist` to exclude specific optimizations. Path patterns work too, so you can keep a long-lived mounted disk image around (for example `/Volumes/mail`) without it showing up as a detach candidate.
 ```
 
 ### Disk Space Analyzer

@@ -320,6 +320,7 @@ opt_diag_offer_detach_candidates() {
         [[ -z "$mount_path" ]] && continue
         echo -e "    ${GRAY}${mount_path}${NC} ← ${image_path}"
     done <<< "$candidates"
+    echo -e "    ${GRAY}${ICON_SUBLIST} Keep one of these mounted: add its path via ${NC}mo optimize --whitelist${GRAY}${NC}"
 
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
         echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Would offer detach for ${count} mounted image(s)"
