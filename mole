@@ -128,6 +128,13 @@ resolve_mole_source_path() {
     [[ -n "$mole_path" ]] && printf '%s\n' "$mole_path"
 }
 
+resolve_current_mole_path() {
+    local mole_path
+    mole_path=$(resolve_mole_source_path || true)
+    [[ -n "$mole_path" ]] || return 1
+    printf '%s\n' "$mole_path"
+}
+
 is_homebrew_mole_path() {
     local mole_path="$1"
     local has_brew="$2"
@@ -164,29 +171,17 @@ is_homebrew_mole_path() {
     return 1
 }
 
-# Install detection (Homebrew vs manual).
-# Default path checks only the active script, keeping source-tree commands fast.
-# Pass --include-path when update/remove flows intentionally need to inspect
-# an installed `mole` found through PATH.
+# Install detection follows the invoked Mole script, not PATH.
 is_homebrew_install() {
-    local include_path_lookup="${1:-}"
     local has_brew=false
     if command -v brew > /dev/null 2>&1; then
         has_brew=true
     fi
 
     local mole_path
-    mole_path=$(resolve_mole_source_path || true)
+    mole_path=$(resolve_current_mole_path || true)
     if is_homebrew_mole_path "$mole_path" "$has_brew"; then
         return 0
-    fi
-
-    if [[ "$include_path_lookup" == "--include-path" ]]; then
-        local path_mole
-        path_mole=$(command -v mole 2> /dev/null || true)
-        if [[ -n "$path_mole" && "$path_mole" != "$mole_path" ]] && is_homebrew_mole_path "$path_mole" "$has_brew"; then
-            return 0
-        fi
     fi
 
     return 1
@@ -391,7 +386,7 @@ update_mole() {
     }
     trap '_update_cleanup; update_interrupted=true; echo ""; exit 130' INT TERM
 
-    if is_homebrew_install --include-path; then
+    if is_homebrew_install; then
         if [[ "$nightly_update" == "true" ]]; then
             local review_icon="${ICON_REVIEW:-☞}"
             log_error "Nightly update is only available for script installations. Homebrew installs follow stable releases."
@@ -400,6 +395,18 @@ update_mole() {
         fi
         update_via_homebrew "$VERSION"
         exit 0
+    fi
+
+    local mole_path
+    if ! mole_path=$(resolve_current_mole_path); then
+        log_error "Unable to resolve current Mole path"
+        exit 1
+    fi
+
+    local install_dir
+    if ! install_dir="$(cd "$(dirname "$mole_path")" && pwd)"; then
+        log_error "Unable to resolve current Mole install directory"
+        exit 1
     fi
 
     local latest=""
@@ -499,11 +506,6 @@ update_mole() {
 
     if [[ -t 1 ]]; then stop_inline_spinner; fi
     chmod +x "$tmp_installer"
-
-    local mole_path
-    mole_path="$(command -v mole 2> /dev/null || echo "$0")"
-    local install_dir
-    install_dir="$(cd "$(dirname "$mole_path")" && pwd)"
 
     local requires_sudo="false"
     if [[ ! -w "$install_dir" ]]; then
