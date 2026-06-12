@@ -204,6 +204,7 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"ChatGPT cache"* ]]
     [[ "$output" == *"Claude desktop cache"* ]]
+    [[ "$output" == *"Google Clearcut logs"* ]]
     [[ "$output" != *"Codex"* ]]
 }
 

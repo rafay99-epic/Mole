@@ -226,6 +226,7 @@ clean_ai_apps() {
     safe_clean ~/Library/Caches/com.anthropic.claudefordesktop/* "Claude desktop cache"
     safe_clean ~/Library/Logs/Claude/* "Claude logs"
     safe_clean ~/Library/Caches/com.lmstudio.lmstudio/* "LM Studio cache"
+    safe_clean ~/Library/Caches/CCTClearcutLogger "Google Clearcut logs"
     if [[ -d "$HOME/Library/Application Support/Codex" || -d "$HOME/Library/Logs/com.openai.codex" ]]; then
         echo -e "  ${GRAY}${ICON_WARNING}${NC} Codex Desktop state · skipped by default"
         note_activity
